@@ -11,7 +11,7 @@
 
 -type(compile_opts() ::
     #{
-        parts => boolean(),
+        parts => boolean() | only,
         compile_opts => list(),
         sep => binary()
     }).
@@ -22,24 +22,43 @@
         run_opts => named | not_named | list()
     }.
 
+-type alias() :: atom().
+-type subj() :: iodata().
+
+-type re() :: re:mp() | raw_re().
+
+-type raw_re() :: iodata() | unicode:charlist().
+-type alliased_raw_re() :: {one_or_more_group_aliases(), raw_re()}.
+
+-type raw_res() :: list(raw_re()) | list(alliased_raw_re()).
+
+-type alias_or_re() :: alias() | re().
+
+-type one_or_more_mps() :: re:mp() | list(re:mp()).
+
+-type group_alias() :: term().
+-type one_or_more_group_aliases() :: group_alias() | list(group_alias()).
+
+-type captured() :: term().
+
+-type captured_result() :: {group_alias(), captured()} | captured().
+
+-type captured_results() :: list({group_alias(), captured()}) | list(captured()).
+
+-type run_error() :: nomatch | bad_re | any().
+
 %% dummy record for re:mp() type
 -record(re_pattern, {a,b,c,d}).
 
 %% API
 
--spec compile({Alias, REs} | REs) ->  
-    {ok, MPs | {Alias, MPs}} when
-        Alias :: atom(),  REs :: list(iodata()) | NamedREs,
-        NamedREs :: list({GroupAliases :: any(), GroupRE :: iodata()}),
-        MPs :: re:mp() | list(re:mp()).
+-spec compile({alias(), raw_res()} | raw_res()) ->
+    {ok, {alias(), one_or_more_mps()} | one_or_more_mps()}.
 compile(REList) ->
     compile(REList, #{}).
 
--spec compile({Alias, REs} | REs, Opts :: compile_opts()) ->
-    {ok, MPs | {Alias, MPs}} when
-        Alias :: atom(), REs :: list(iodata()) | NamedREs,
-        NamedREs :: list({GroupAliases :: any(), GroupRE :: iodata()}),
-        MPs :: re:mp() | list(re:mp()).
+-spec compile({alias(), raw_res()} | raw_res(), compile_opts()) ->
+    {ok, {alias(), one_or_more_mps()} | one_or_more_mps()}.
 compile({Alias, REList}, Opts) when is_list(REList), is_atom(Alias) ->
     Parts = maps:get(parts, Opts, false),
     CompOpts = maps:get(compile_opts, Opts, ?re_compile_opts),
@@ -107,26 +126,22 @@ store_parts(Alias, Items) ->
 retrieve(Alias) ->
     persistent_term:get(Alias).
 
--spec remove(Alias :: atom()) -> ok | {error, noexist}.
+-spec remove(alias()) -> ok | {error, noexist}.
 remove(Alias) when is_atom(Alias) ->
     case persistent_term:erase(Alias) of
         true -> ok;
         false -> {error, noexist}
     end.
 
--spec run(Subject :: iodata(), Alias | RE) ->
-    {ok, list({Alias, Captured}) | list(Captured)} |
-    {error, Reason :: any()} when
-    Alias :: any(), Captured :: any(),
-    RE :: re:mp() | unicode:charlist() | iodata().
+-spec run(subj(), alias_or_re()) ->
+    {ok, captured_results()} | {error, run_error()} |
+    list({ok, captured_result()} | {error, run_error()}).
 run(Subject, Alias) ->
     run(Subject, Alias, #{parts => false, run_opts => not_named}).
 
--spec run(Subject :: iodata(), Alias | RE, run_opts()) ->
-    {ok, list({Alias, Captured}) | list(Captured)} |
-    {error, Reason :: any()} when
-    Alias :: any(), Captured :: any(),
-    RE :: re:mp() | unicode:charlist() | iodata().
+-spec run(subj(), alias_or_re(), run_opts()) ->
+    {ok, captured_results()} | {error, run_error()} |
+    list({ok, captured_result()} | {error, run_error()}).
 run(Subject, Alias, Opts) when is_atom(Alias) ->
     UOpts = maps:update_with(parts, fun(V) -> V end, false, Opts),
     do_run(Subject, retrieve(Alias), UOpts);
